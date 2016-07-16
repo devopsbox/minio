@@ -58,7 +58,7 @@ func TestIsValidLocationContraint(t *testing.T) {
 		if e != nil {
 			t.Fatalf("Test %d: Failed to Marshal bucket configuration", i+1)
 		}
-		actualCode := isValidLocationContraint(inputRequest.Body, testCase.serverConfigRegion)
+		actualCode := isValidLocationConstraint(inputRequest, testCase.serverConfigRegion)
 		if testCase.expectedCode != actualCode {
 			t.Errorf("Test %d: Expected the APIErrCode to be %d, but instead found %d", i+1, testCase.expectedCode, actualCode)
 		}

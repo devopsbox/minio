@@ -306,31 +306,23 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 // ----------
 // This implementation of the PUT operation creates a new bucket for authenticated request
 func (api objectAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate request authorization.
+	if s3Error := checkAuth(w, r); s3Error != ErrNone {
+		writeErrorResponse(w, r, s3Error, r.URL.Path)
+		return
+	}
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
-
-	// Set http request for signature.
-	switch getRequestAuthType(r) {
-	default:
-		// For all unknown auth types return error.
-		writeErrorResponse(w, r, ErrAccessDenied, r.URL.Path)
-		return
-	case authTypePresigned, authTypeSigned:
-		if s3Error := isReqAuthenticated(r); s3Error != ErrNone {
-			writeErrorResponse(w, r, s3Error, r.URL.Path)
-			return
-		}
-	}
 
 	// the location value in the request body should match the Region in serverConfig.
 	// other values of location are not accepted.
 	// make bucket fails in such cases.
-	errCode := isValidLocationContraint(r.Body, serverConfig.GetRegion())
-	if errCode != ErrNone {
-		writeErrorResponse(w, r, errCode, r.URL.Path)
+	if s3ErrCode := isValidLocationConstraint(r, serverConfig.GetRegion()); s3ErrCode != ErrNone {
+		writeErrorResponse(w, r, s3ErrCode, r.URL.Path)
 		return
 	}
-	// Make bucket.
+	// Proceed to creating a bucket.
 	err := api.ObjectAPI.MakeBucket(bucket)
 	if err != nil {
 		errorIf(err, "Unable to create a bucket.")
@@ -424,6 +416,9 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 	})
 	setCommonHeaders(w)
 	writeSuccessResponse(w, encodedSuccessResponse)
+
+	size := int64(0) // FIXME: support notify size.
+	notifyObjectCreatedEvent(ObjectCreatedPost, bucket, object, md5Sum, size)
 }
 
 // HeadBucketHandler - HEAD Bucket
@@ -464,21 +459,16 @@ func (api objectAPIHandlers) HeadBucketHandler(w http.ResponseWriter, r *http.Re
 
 // DeleteBucketHandler - Delete bucket
 func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
+	// DeleteBucket does not support bucket policies, no need to enforce it.
+	if s3Error := checkAuth(w, r); s3Error != ErrNone {
+		writeErrorResponse(w, r, s3Error, r.URL.Path)
+		return
+	}
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	switch getRequestAuthType(r) {
-	default:
-		// For all unknown auth types return error.
-		writeErrorResponse(w, r, ErrAccessDenied, r.URL.Path)
-		return
-	case authTypePresigned, authTypeSigned:
-		if s3Error := isReqAuthenticated(r); s3Error != ErrNone {
-			writeErrorResponse(w, r, s3Error, r.URL.Path)
-			return
-		}
-	}
-
+	// Attempt to delete bucket.
 	if err := api.ObjectAPI.DeleteBucket(bucket); err != nil {
 		errorIf(err, "Unable to delete a bucket.")
 		writeErrorResponse(w, r, toAPIErrorCode(err), r.URL.Path)

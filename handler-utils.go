@@ -18,37 +18,34 @@ package main
 
 import (
 	"io"
+	"net/http"
 )
 
 // validates location constraint from the request body.
-// the location value in the request body should match the Region in serverConfig.
-// other values of location are not accepted.
-// make bucket fails in such cases.
-func isValidLocationContraint(reqBody io.Reader, serverRegion string) APIErrorCode {
-	var locationContraint createBucketLocationConfiguration
-	var errCode APIErrorCode
-	errCode = ErrNone
-	e := xmlDecoder(reqBody, &locationContraint)
-	if e != nil {
-		if e == io.EOF {
-			// Do nothing.
-			// failed due to empty body. The location will be set to default value from the serverConfig.
-			// this is valid.
+// the location value in the request body should match
+// the Region in serverConfig. other values of location
+// are not accepted. Make bucket fails in such cases.
+func isValidLocationConstraint(r *http.Request, region string) (errCode APIErrorCode) {
+	var locationConstraint createBucketLocationConfiguration
+	err := xmlDecoder(r.Body, &locationConstraint, r.ContentLength)
+	if err != nil {
+		if err == io.EOF {
+			// Do nothing. failed due to empty body. The location will
+			// be set to default value from the serverConfig. This is valid.
 			errCode = ErrNone
 		} else {
+			errorIf(err, "Unable to XML decode locationConstraint.")
 			// Failed due to malformed configuration.
 			errCode = ErrMalformedXML
-			//writeErrorResponse(w, r, ErrMalformedXML, r.URL.Path)
 		}
-	} else {
-		// Region obtained from the body.
-		// It should be equal to Region in serverConfig.
-		// Else ErrInvalidRegion returned.
-		// For empty value location will be to set to  default value from the serverConfig.
-		if locationContraint.Location != "" && serverRegion != locationContraint.Location {
-			//writeErrorResponse(w, r, ErrInvalidRegion, r.URL.Path)
-			errCode = ErrInvalidRegion
-		}
+		return errCode
+	}
+	// Region obtained from the body.
+	// It should be equal to Region in serverConfig.
+	// else ErrInvalidRegion returned.
+	// For empty value location will be to set to  default value from the serverConfig.
+	if locationConstraint.Location != "" && region != locationConstraint.Location {
+		errCode = ErrInvalidRegion
 	}
 	return errCode
 }
